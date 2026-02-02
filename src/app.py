@@ -12,6 +12,7 @@ from .ebay_api import EbayApi
 from .scoring import ScoreResult, extract_pricing, score_item
 from .storage import init_db, is_seen, mark_seen
 
+
 CATEGORY_WRISTWATCHES = "31387"
 
 
