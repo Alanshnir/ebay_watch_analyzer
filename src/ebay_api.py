@@ -105,19 +105,6 @@ class EbayApi:
                     details = response.json()
                 except json.JSONDecodeError:
                     details = response.text
-                if response.status_code == 401 and isinstance(details, dict):
-                    error = details.get("error")
-                    description = details.get("error_description")
-                    if error == "invalid_client":
-                        raise EbayApiError(
-                            "HTTP 401 invalid_client: verify EBAY_CLIENT_ID/EBAY_CLIENT_SECRET "
-                            "match your eBay app credentials and that you are using the production "
-                            "credentials (not sandbox)."
-                        )
-                    if description:
-                        raise EbayApiError(
-                            f"HTTP 401 unauthorized: {description}. Check EBAY_CLIENT_ID/EBAY_CLIENT_SECRET."
-                        )
                 raise EbayApiError(f"HTTP {response.status_code} error: {details}")
             return response
         raise EbayApiError(f"Exceeded retries for {url}")
