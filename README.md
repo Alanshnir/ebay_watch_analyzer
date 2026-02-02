@@ -43,6 +43,10 @@ cp .env.example .env
 python -m src.app
 ```
 
+If you receive a 401 `invalid_client` error, confirm you're using the production app credentials
+from your eBay developer account (not the sandbox credentials), and that the values in `.env`
+match exactly.
+
 Outputs:
 - `data/candidates.csv`
 - `data/raw.jsonl`
