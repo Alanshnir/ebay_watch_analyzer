@@ -11,10 +11,15 @@ class AiAnalysisError(RuntimeError):
     pass
 
 
+_LAST_AI_REQUEST_TS = 0.0
+
+
 def analyze_listing(item: Dict[str, Any], candidate_row: Dict[str, Any]) -> Dict[str, Any]:
     provider = (os.getenv("AI_PROVIDER") or "").strip().lower()
     if not provider:
         return _empty_result("disabled", "AI_PROVIDER not configured")
+
+    _apply_rate_limit()
 
     if provider == "openai":
         return _analyze_with_openai(item, candidate_row)
@@ -22,6 +27,23 @@ def analyze_listing(item: Dict[str, Any], candidate_row: Dict[str, Any]) -> Dict
         return _analyze_with_gemini(item, candidate_row)
 
     return _empty_result(provider, f"Unsupported AI_PROVIDER={provider}")
+
+
+def _apply_rate_limit() -> None:
+    global _LAST_AI_REQUEST_TS
+
+    rpm = int(os.getenv("AI_REQUESTS_PER_MINUTE", "5"))
+    if rpm <= 0:
+        rpm = 5
+
+    min_interval = 60.0 / rpm
+    now = time.time()
+    elapsed = now - _LAST_AI_REQUEST_TS
+    if _LAST_AI_REQUEST_TS > 0 and elapsed < min_interval:
+        sleep_for = min_interval - elapsed
+        logging.info("AI rate limit pacing: sleeping %.2fs", sleep_for)
+        time.sleep(sleep_for)
+    _LAST_AI_REQUEST_TS = time.time()
 
 
 def _listing_payload(item: Dict[str, Any], candidate_row: Dict[str, Any]) -> Dict[str, Any]:
@@ -217,12 +239,15 @@ def _safe_float(value: Any) -> float | None:
 
 
 def _request_with_backoff(method: str, url: str, **kwargs: Any) -> requests.Response:
-    retries = 4
-    base_delay = 1.0
+    retries = 6
+    base_delay = 2.0
+    retriable = {429, 500, 502, 503, 504}
+
     for attempt in range(retries):
         response = requests.request(method, url, timeout=45, **kwargs)
-        if response.status_code == 429:
+        if response.status_code in retriable:
             delay = base_delay * (2**attempt)
+            logging.warning("AI temporary HTTP %s. Retrying in %.1fs", response.status_code, delay)
             time.sleep(delay)
             continue
         if response.status_code >= 400:
