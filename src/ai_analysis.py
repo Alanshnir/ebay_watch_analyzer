@@ -108,7 +108,7 @@ def _analyze_with_openai(item: Dict[str, Any], candidate_row: Dict[str, Any]) ->
 
 def _analyze_with_gemini(item: Dict[str, Any], candidate_row: Dict[str, Any]) -> Dict[str, Any]:
     api_key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
     if not api_key:
         return _empty_result("gemini", "GEMINI_API_KEY missing")
 

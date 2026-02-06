@@ -1,20 +1,21 @@
 # eBay Watch Analyzer MVP
 
-This MVP searches eBay US for wristwatch listings likely suited for flipping (non-working/for-parts) using the official eBay Buy Browse API. It scores candidates using seller trust signals and watch condition keywords, then runs an optional AI analysis step (OpenAI or Gemini) to estimate equivalent sale price, sellability, and likely replacement parts.
+This MVP searches eBay US for wristwatch listings likely suited for flipping (non-working/for-parts) using the official eBay Buy Browse API. It scores candidates using seller trust signals and watch condition keywords, then runs a Gemini analysis step to estimate equivalent sale price, sellability, and likely replacement parts.
 
 > **Important note:** This tool provides candidate discovery and risk scoring only. AI outputs are estimates, not guarantees. Pricing/ROI still requires manual comp validation.
 
 ## Features
 - Uses eBay Buy Browse API search + getItem (no HTML scraping).
 - Scores listings with seller feedback thresholds, return policy signals, condition IDs, and keyword matches.
-- Optional AI step to evaluate each listing + pictures and estimate:
+- Writes base candidate output to `data/candidates.csv`.
+- Runs Gemini on **every row in `candidates.csv`** and writes enriched output to `data/gemini_processed.csv`.
+- Gemini output includes:
   - whether it is a flip candidate
   - equivalent selling price for a working equivalent watch
   - ease of sale (`high|medium|low`)
   - likely parts to replace + parts cost estimate
   - estimated profit (`equivalent_sale_price - all_in_cost - parts_cost`)
 - Persists seen items in SQLite to avoid reprocessing.
-- Outputs only top profitable flips (`TOP_N_RESULTS`, default 5) to `data/candidates.csv`.
 
 ## Setup
 
@@ -30,7 +31,7 @@ pip install -r requirements.txt
 ```
 
 ### 3) Configure environment
-Copy `.env.example` to `.env` and add your eBay API credentials.
+Copy `.env.example` to `.env` and add your eBay + Gemini API credentials.
 ```bash
 cp .env.example .env
 ```
@@ -43,16 +44,15 @@ Required eBay env vars:
 - `MIN_FEEDBACK_PCT` (default `97.5`)
 - `MIN_FEEDBACK_SCORE` (default `50`)
 - `RUN_QUERIES` (optional comma-separated list)
-- `TOP_N_RESULTS` (default `5`)
 
-Optional AI Step 2 env vars:
-- `AI_PROVIDER` (`openai` or `gemini`; leave empty to disable AI step)
-- OpenAI:
-  - `OPENAI_API_KEY`
-  - `OPENAI_MODEL` (default `gpt-4.1-mini`)
-- Gemini:
-  - `GEMINI_API_KEY`
-  - `GEMINI_MODEL` (default `gemini-1.5-flash`)
+Gemini env vars:
+- `AI_PROVIDER=gemini`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL` (default `gemini-3-flash-preview`)
+
+Optional OpenAI vars are still supported by the code but not used when `AI_PROVIDER=gemini`:
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
 
 ### 4) Run
 ```bash
@@ -62,18 +62,17 @@ python -m src.app
 If you receive a 401 `invalid_client` error, confirm you're using the production app credentials from your eBay developer account (not sandbox credentials), and that values in `.env` match exactly.
 
 Outputs:
-- `data/candidates.csv` (top N profitable flips)
+- `data/candidates.csv` (base scored candidates)
+- `data/gemini_processed.csv` (Gemini-enriched candidates, all rows from `candidates.csv`)
 - `data/raw.jsonl`
 - `data/run.log`
 
-## CSV Columns (minimum + AI step)
-Base columns:
+## CSV Columns
+`candidates.csv` columns:
 - `run_timestamp`, `itemId`, `title`, `itemWebUrl`, `price_value`, `shipping_value`, `all_in_cost`, `currency`, `condition`, `conditionId`, `listingType`, `buyingOptions`, `image_url`, `seller_username`, `seller_feedback_pct`, `seller_feedback_score`, `returns_accepted`, `score_total`, `score_reasons`
 
-AI columns:
+`gemini_processed.csv` includes all candidate columns plus:
 - `ai_provider`, `ai_model`, `ai_flip_candidate`, `ai_equivalent_sale_price`, `ai_sell_ease`, `ai_needed_parts`, `ai_parts_cost_estimate`, `ai_confidence`, `ai_summary`, `ai_estimated_profit`, `ai_error`
-
-When AI is enabled and returns estimates, results are sorted by `ai_estimated_profit DESC` then `score_total DESC`; otherwise they fallback to `score_total DESC` + `all_in_cost ASC`.
 
 ## Scheduling
 
