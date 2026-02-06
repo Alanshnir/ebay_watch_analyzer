@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from .ai_analysis import AiAnalysisError, analyze_listing
 from .ebay_api import EbayApi
 from .scoring import ScoreResult, extract_pricing, score_item
-from .storage import init_db, is_seen, mark_seen
+from .storage import init_db, mark_seen
 
 CATEGORY_WRISTWATCHES = "31387"
 
@@ -112,7 +112,7 @@ def _extract_candidates(
     with raw_path.open("a", encoding="utf-8") as raw_file:
         for summary in summaries:
             item_id = summary.get("itemId")
-            if not item_id or is_seen(db_path, item_id):
+            if not item_id:
                 continue
 
             try:

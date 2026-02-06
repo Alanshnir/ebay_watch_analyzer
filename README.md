@@ -15,7 +15,7 @@ This MVP searches eBay US for wristwatch listings likely suited for flipping (no
   - ease of sale (`high|medium|low`)
   - likely parts to replace + parts cost estimate
   - estimated profit (`equivalent_sale_price - all_in_cost - parts_cost`)
-- Persists seen items in SQLite to avoid reprocessing.
+- Persists seen items in SQLite for first-seen tracking/history; analysis still runs on all fetched candidates each run.
 
 ## Setup
 
@@ -62,7 +62,7 @@ python -m src.app
 If you receive a 401 `invalid_client` error, confirm you're using the production app credentials from your eBay developer account (not sandbox credentials), and that values in `.env` match exactly.
 
 Outputs:
-- `data/candidates.csv` (base scored candidates)
+- `data/candidates.csv` (base scored candidates for all fetched results this run)
 - `data/gemini_processed.csv` (Gemini-enriched candidates, all rows from `candidates.csv`)
 - `data/raw.jsonl`
 - `data/run.log`
