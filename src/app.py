@@ -8,10 +8,10 @@ from typing import Any, Dict, List, Set
 import pandas as pd
 from dotenv import load_dotenv
 
+from .ai_analysis import AiAnalysisError, analyze_listing
 from .ebay_api import EbayApi
 from .scoring import ScoreResult, extract_pricing, score_item
 from .storage import init_db, is_seen, mark_seen
-
 
 CATEGORY_WRISTWATCHES = "31387"
 
@@ -98,6 +98,14 @@ def fetch_items(api: EbayApi, queries: List[str], filters: str, limit: int) -> L
     return items
 
 
+def _sort_and_filter_top_flips(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    if "ai_estimated_profit" in df.columns and df["ai_estimated_profit"].notna().any():
+        sorted_df = df.sort_values(by=["ai_estimated_profit", "score_total"], ascending=[False, False])
+    else:
+        sorted_df = df.sort_values(by=["score_total", "all_in_cost"], ascending=[False, True])
+    return sorted_df.head(top_n)
+
+
 def main() -> None:
     load_dotenv()
     data_dir = Path("data")
@@ -114,6 +122,7 @@ def main() -> None:
     max_price = float(os.getenv("MAX_PRICE", "300"))
     min_feedback_pct = float(os.getenv("MIN_FEEDBACK_PCT", "97.5"))
     min_feedback_score = int(os.getenv("MIN_FEEDBACK_SCORE", "50"))
+    top_n = int(os.getenv("TOP_N_RESULTS", "5"))
 
     api = EbayApi(client_id, client_secret, marketplace_id)
     run_timestamp = datetime.now(timezone.utc).isoformat()
@@ -162,6 +171,24 @@ def main() -> None:
 
             score_result = score_item(item, min_feedback_pct, min_feedback_score)
             row = build_candidate_row(item, score_result, run_timestamp)
+            try:
+                ai_result = analyze_listing(item, row)
+            except AiAnalysisError as exc:
+                logging.error("AI analysis failed for item %s: %s", item_id, exc)
+                ai_result = {
+                    "ai_provider": os.getenv("AI_PROVIDER"),
+                    "ai_model": None,
+                    "ai_flip_candidate": None,
+                    "ai_equivalent_sale_price": None,
+                    "ai_sell_ease": None,
+                    "ai_needed_parts": None,
+                    "ai_parts_cost_estimate": None,
+                    "ai_confidence": None,
+                    "ai_summary": None,
+                    "ai_estimated_profit": None,
+                    "ai_error": str(exc),
+                }
+            row.update(ai_result)
             candidates.append(row)
             mark_seen(db_path, item_id, run_timestamp)
 
@@ -170,11 +197,11 @@ def main() -> None:
         return
 
     df = pd.DataFrame(candidates)
-    df = df.sort_values(by=["score_total", "all_in_cost"], ascending=[False, True])
+    top_df = _sort_and_filter_top_flips(df, top_n=top_n)
 
     output_path = data_dir / "candidates.csv"
-    df.to_csv(output_path, index=False)
-    logging.info("Wrote %d candidates to %s", len(df), output_path)
+    top_df.to_csv(output_path, index=False)
+    logging.info("Wrote %d candidates to %s", len(top_df), output_path)
 
 
 if __name__ == "__main__":

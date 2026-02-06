@@ -48,8 +48,8 @@ def score_item(
         reasons.append("condition:for_parts")
 
     seller = item.get("seller", {})
-    feedback_pct = seller.get("feedbackPercentage")
-    feedback_score = seller.get("feedbackScore")
+    feedback_pct = _safe_float(seller.get("feedbackPercentage"))
+    feedback_score = _safe_float(seller.get("feedbackScore"))
     if feedback_pct is not None:
         if feedback_pct >= min_feedback_pct:
             score += 5
