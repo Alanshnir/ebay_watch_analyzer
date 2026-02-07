@@ -5,6 +5,7 @@ import time
 from typing import Any, Dict, List
 
 import requests
+from requests import exceptions as req_exc
 
 
 class AiAnalysisError(RuntimeError):
@@ -116,7 +117,13 @@ def _analyze_with_openai(item: Dict[str, Any], candidate_row: Dict[str, Any]) ->
         "Content-Type": "application/json",
     }
 
-    response = _request_with_backoff("post", "https://api.openai.com/v1/responses", headers=headers, json=body)
+    response = _request_with_backoff(
+        "post",
+        "https://api.openai.com/v1/responses",
+        timeout=int(os.getenv("AI_REQUEST_TIMEOUT_SEC", "60")),
+        headers=headers,
+        json=body,
+    )
     data = response.json()
     text = _extract_openai_text(data)
     parsed = _parse_json(text)
@@ -140,7 +147,13 @@ def _analyze_with_gemini(item: Dict[str, Any], candidate_row: Dict[str, Any]) ->
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
 
-    response = _request_with_backoff("post", url, headers=headers, json=body)
+    response = _request_with_backoff(
+        "post",
+        url,
+        timeout=int(os.getenv("AI_REQUEST_TIMEOUT_SEC", "60")),
+        headers=headers,
+        json=body,
+    )
     data = response.json()
     text = _extract_gemini_text(data)
     parsed = _parse_json(text)
@@ -238,14 +251,21 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
-def _request_with_backoff(method: str, url: str, **kwargs: Any) -> requests.Response:
+def _request_with_backoff(method: str, url: str, timeout: int = 60, **kwargs: Any) -> requests.Response:
     retries = 6
     base_delay = 2.0
-    retriable = {429, 500, 502, 503, 504}
+    retriable_statuses = {429, 500, 502, 503, 504}
 
     for attempt in range(retries):
-        response = requests.request(method, url, timeout=45, **kwargs)
-        if response.status_code in retriable:
+        try:
+            response = requests.request(method, url, timeout=timeout, **kwargs)
+        except (req_exc.Timeout, req_exc.ConnectionError, req_exc.ChunkedEncodingError) as exc:
+            delay = base_delay * (2**attempt)
+            logging.warning("AI request network error (%s). Retrying in %.1fs", exc.__class__.__name__, delay)
+            time.sleep(delay)
+            continue
+
+        if response.status_code in retriable_statuses:
             delay = base_delay * (2**attempt)
             logging.warning("AI temporary HTTP %s. Retrying in %.1fs", response.status_code, delay)
             time.sleep(delay)
@@ -253,4 +273,5 @@ def _request_with_backoff(method: str, url: str, **kwargs: Any) -> requests.Resp
         if response.status_code >= 400:
             raise AiAnalysisError(f"AI HTTP {response.status_code}: {response.text[:500]}")
         return response
+
     raise AiAnalysisError(f"AI retries exceeded for {url}")

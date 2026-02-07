@@ -50,6 +50,7 @@ Gemini env vars:
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL` (default `gemini-3-flash-preview`)
 - `AI_REQUESTS_PER_MINUTE` (default `5`; for your 5 RPM limit keep this at 5)
+- `AI_REQUEST_TIMEOUT_SEC` (default `60`; increase to `90` if your connection is slow)
 
 Optional OpenAI vars are still supported by the code but not used when `AI_PROVIDER=gemini`:
 - `OPENAI_API_KEY`
@@ -153,4 +154,5 @@ sudo systemctl enable --now ebay-watch-analyzer.timer
 - Token caching is implemented until near expiry.
 - Missing fields are tolerated in both scoring and AI enrichment.
 - AI calls are rate-paced by `AI_REQUESTS_PER_MINUTE` and automatically retried on 429/5xx (including Gemini 503 overload).
+- AI network timeouts/connection issues are retried automatically with backoff; final failures are recorded per-row in `ai_error` instead of crashing the full run.
 - Use official eBay APIs only.
